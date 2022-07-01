@@ -247,7 +247,7 @@ diffs%>%  group_by(var) %>% mutate(diff_r = coef[which(regvote==1)]-coef[which(r
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
-![](Markdown_file_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+![](primary_poll_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
 
 The second section presented in the story is a look into the
 distribution of opinions along party lines and concern for democracy
@@ -268,7 +268,7 @@ srs_design  %>% group_by(regvote,DEMOCRACY) %>% summarise(survey_prop("ci")) %>%
   geom_errorbar(aes(ymin = `_low`,ymax = `_upp`, x = DEMOCRACY), position = "dodge")
 ```
 
-![](Markdown_file_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](primary_poll_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
 
 ``` r
 srs_design  %>% group_by(regvote,DEMOCRACY) %>% summarise(survey_prop("ci")) %>% 
@@ -276,7 +276,7 @@ srs_design  %>% group_by(regvote,DEMOCRACY) %>% summarise(survey_prop("ci")) %>%
   geom_errorbar(aes(ymin = `_low`,ymax = `_upp`, x = DEMOCRACY), position = "dodge")
 ```
 
-![](Markdown_file_files/figure-gfm/unnamed-chunk-2-2.png)<!-- -->
+![](primary_poll_files/figure-gfm/unnamed-chunk-2-2.png)<!-- -->
 
 Taking this a step further, we can examine how these opinions vary
 depending on a person’s feelings about the security of American
@@ -294,7 +294,7 @@ srs_design %>%
   facet_grid(~regvote)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
-![](Markdown_file_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](primary_poll_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 ``` r
 srs_design %>% 
@@ -308,7 +308,7 @@ srs_design %>%
   facet_grid(~regvote)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
-![](Markdown_file_files/figure-gfm/unnamed-chunk-3-2.png)<!-- -->
+![](primary_poll_files/figure-gfm/unnamed-chunk-3-2.png)<!-- -->
 
 As stated in the article, there is a very interesting trend here where
 as a respondent’s concern for democracy increases, their belief in their
