@@ -1,0 +1,286 @@
+---
+title: "What the Goucher College Poll tells us about opinions shared by Maryland voters"
+author: "Nick Thieme"
+date: '2022-07-01'
+output: github_document
+---
+This is the code that goes along with the analysis of the Goucher College Poll story located [here]().
+
+### Library
+```{r, message=FALSE, `results = FALSE`}
+library(haven)
+library(tidyverse)
+library(survey)
+library(srvyr)
+library(jtools)
+library(weights)
+library(ggcorrplot)
+library(janitor)
+library(dendsort)
+library(seriation)
+library(gplots)
+library(RColorBrewer)
+library(tidycensus)
+library(lubridate)
+library(sf)
+library(vctrs)
+
+###library functions
+
+calc_diffs<-function(D_for_diff, group_var){
+  i=1
+  
+ to_rm<- which(listed_names==group_var)
+ 
+ if(length(to_rm)>0){
+   listed_names<-listed_names[-to_rm]
+ }
+  
+  D_og<-  D_for_diff %>% 
+    group_by_at(vars(ends_with(group_var),ends_with(listed_names[i])))%>%
+    summarise(survey_prop(vartype = "ci", level =.95))   %>% na.omit %>% 
+    clean_names() %>% 
+    pivot_wider(names_from = listed_names[i], values_from = c("coef","low","upp"),
+                 names_prefix = str_c(listed_names[i],"-"), names_sep="|") %>% ungroup
+  
+  for(i in 2:length(listed_names)){
+    D_now<-D_for_diff %>% 
+      group_by_at(vars(ends_with(group_var),ends_with(listed_names[i])))%>%
+      summarise(survey_prop(vartype = "ci", level =.95))   %>% na.omit %>% 
+      clean_names() %>% 
+      pivot_wider( names_from = listed_names[i], values_from = c("coef","low","upp"),
+                   names_prefix = str_c(listed_names[i],"-"), names_sep="|") %>% ungroup %>% 
+      select(-ends_with(group_var))
+    
+    
+    D_og<-cbind(D_og,D_now)
+  }
+  
+  
+  D_f<-D_og %>% pivot_longer(-ends_with(group_var), names_to = "var",values_to = "vals") %>% 
+    mutate(opinion=str_split(var, "-") %>% lapply(function(x)return(x[[2]])) %>% unlist,
+           var = str_split(var, "-") %>% lapply(function(x)return(x[[1]])) %>% unlist,
+           var_type = str_split(var, "\\|") %>% lapply(function(x)return(x[[1]])) %>% unlist,
+           var = str_split(var, "\\|") %>% lapply(function(x)return(x[[2]])) %>% unlist
+    ) %>% 
+    pivot_wider(names_from= var_type, values_from = vals) %>% filter(opinion ==2, var !=group_var) %>% 
+    mutate_at(vars(ends_with(group_var)), as_factor)
+  
+  
+  return(D_f)
+  
+  
+}
+
+weight_survey_entry<-function(srs_design, var_set){
+  
+  tally_tot<-srs_design %>% group_by(across(var_set)) %>% survey_tally()
+  
+  #i know this is very ugly but this is a way to properly weight observations according to weights
+  n.times<-((tally_tot$n/min(tally_tot$n))*nrow(srs_design)/sum(tally_tot$n/min(tally_tot$n))) %>% round
+  
+  D_plot_f<-tally_tot[rep(seq_len(nrow(tally_tot)), n.times),]
+  return(D_plot_f)
+}
+
+
+D_poll_results = read_sav("~/Desktop/banner_projects/primary_poll/data/MD Statewide Primary_Banner.sav") %>% 
+  mutate_all(as_factor) %>% mutate(
+    trump_support = case_when(TRUMP_FAV%in%c("Very unfavorable","Unfavorable")~ "no_support",
+                              TRUMP_FAV%in%c("Very favorable","Favorable")~  "support"
+                                                  ),
+    insur_2 = case_when(INSURRECTION%in%c("It was wrong, but not an insurrection or attack on democracy.",
+                                          "It was a legitimate protest.")~ "not_insurr",
+                        INSURRECTION%in%c("It was an insurrection and an attack on democracy.")~  "insurr"
+    ),
+    
+    dem_2 = case_when(DEMOCRACY%in%c("Very threatened","Threatened")~ "threatened",
+                      DEMOCRACY%in%c("Secure","Very secure")~  "secure"
+    ),
+  )
+
+srs_design<-D_poll_results %>% mutate(WEIGHT = as.numeric(WEIGHT)) %>% 
+  as_survey_design(ids =1, weight = WEIGHT)
+
+threat_act <- c("Very threatened","Threatened","Secure")
+won_act <- c("Won due to fraud", "Won fair and square")
+
+insurr_act<-c("It was an insurrection and an attack on democracy.",
+              "It was wrong, but not an insurrection or attack on democracy.",
+              "It was a legitimate protest.")
+```
+ 
+The first chart in the story examines the differences along political party lines for all of the "valence-codable" poll questions. We use a similar coding scheme to in the previous story where "Not an issue" and "minor issue" are grouped together as one valence, while "Major issue" is the other pole. This seems reasonable both from discussion with poll experts and from the intuition that in a polling context where people are demonstrated to have strong opinions, a slight opinion is closer to a non-opinion. 
+
+```{r}
+
+D_for_diff=srs_design$variables %>%mutate_all(as.numeric) %>%  mutate(
+  
+  TRACK =case_when(TRACK%in%c(2)~2,
+                   TRACK%in%c(1)~1),
+  
+  MDECON_CUR =case_when(MDECON_CUR%in%c(2)~2,
+                        MDECON_CUR%in%c(1)~1),
+  
+  MDECON_FUT =case_when(MDECON_FUT%in%c(2)~2,
+                        MDECON_FUT%in%c(1)~1),
+  
+  PRICE = case_when(PRICE%in%c(1,2)~1,
+                    PRICE%in%c(3)~2),
+  
+  HOGAN_FAV = case_when(HOGAN_FAV%in%c(1,2)~1,
+                        HOGAN_FAV%in%c(3,4)~2),
+  
+  TRUMP_FAV = case_when(TRUMP_FAV%in%c(1,2)~1,
+                        TRUMP_FAV%in%c(3,4)~2),
+  
+  BIDEN_FAV = case_when(BIDEN_FAV%in%c(1,2)~1,
+                        BIDEN_FAV%in%c(3,4)~2),
+  
+  GOP_FAV = case_when(GOP_FAV%in%c(1,2)~1,
+                      GOP_FAV%in%c(3,4)~2),
+  
+  DEM_FAV = case_when(DEM_FAV%in%c(1,2)~1,
+                      DEM_FAV%in%c(3,4)~2),
+  
+  OBAMA_FAV = case_when(OBAMA_FAV%in%c(1,2)~1,
+                        OBAMA_FAV%in%c(3,4)~2),
+  
+  ISSUE_CRM = case_when(ISSUE_CRM%in%c(1,2)~1,
+                        ISSUE_CRM%in%c(3)~2),
+  
+  ISSUE_SCH = case_when(ISSUE_SCH%in%c(1,2)~1,
+                        ISSUE_SCH%in%c(3)~2),
+  
+  ISSUE_INF = case_when(ISSUE_INF%in%c(1,2)~1,
+                        ISSUE_INF%in%c(3)~2),
+  
+  ISSUE_GAS = case_when(ISSUE_GAS%in%c(1,2)~1,
+                        ISSUE_GAS%in%c(3)~2),
+  
+  ISSUE_HWY = case_when(ISSUE_HWY%in%c(1,2)~1,
+                        ISSUE_HWY%in%c(3)~2),
+  
+  ISSUE_PUB = case_when(ISSUE_PUB%in%c(1,2)~1,
+                        ISSUE_PUB%in%c(3)~2),
+  
+  ISSUE_TAX = case_when(ISSUE_TAX%in%c(1,2)~1,
+                        ISSUE_TAX%in%c(3)~2),
+  
+  ISSUE_ECN = case_when(ISSUE_ECN%in%c(1,2)~1,
+                        ISSUE_ECN%in%c(3)~2),
+  
+  ISSUE_HOU = case_when(ISSUE_HOU%in%c(1,2)~1,
+                        ISSUE_HOU%in%c(3)~2),
+  
+  ISSUE_ENV = case_when(ISSUE_ENV%in%c(1,2)~1,
+                        ISSUE_ENV%in%c(3)~2),
+  
+  ISSUE_CVD = case_when(ISSUE_CVD%in%c(1,2)~1,
+                        ISSUE_CVD%in%c(3)~2),
+  
+  
+  ABORTION = case_when(ABORTION%in%c(1)~2,
+                       ABORTION%in%c(2,3)~1),
+  
+  ABORTION_VT = case_when(ABORTION_VT%in%c(1)~2,
+                          ABORTION_VT%in%c(2,3)~1),
+  
+  GUNS = case_when(GUNS%in%c(3)~2,
+                   GUNS%in%c(1,2)~1),
+  
+  GUNS_VT = case_when(GUNS_VT%in%c(1)~2,
+                      GUNS_VT%in%c(2,3)~1),
+  
+  DEMOCRACY = case_when(DEMOCRACY%in%c(1,2)~2,
+                        DEMOCRACY%in%c(3,4)~1),
+  
+  BIDEN_ELECT = case_when(BIDEN_ELECT%in%c(1)~2,
+                          BIDEN_ELECT%in%c(2)~1),
+  
+  FAIR_MD = case_when(FAIR_MD%in%c(1,2)~2,
+                      FAIR_MD%in%c(3,4)~1),
+  
+  INSURRECTION = case_when(INSURRECTION%in%c(1)~2,
+                           INSURRECTION%in%c(2,3)~1),
+
+) %>% as_survey_design(ids =1, weight = WEIGHT) %>% 
+select(
+  regvote , TRACK,MDECON_CUR,MDECON_FUT,PRICE,HOGAN_FAV,TRUMP_FAV,BIDEN_FAV,GOP_FAV,
+  DEM_FAV,OBAMA_FAV, ISSUE_CRM,ISSUE_SCH,ISSUE_INF,ISSUE_GAS,ISSUE_HWY,ISSUE_PUB,
+  ISSUE_TAX,ISSUE_ECN,ISSUE_HOU,ISSUE_ENV, ISSUE_CVD,ABORTION,ABORTION_VT,GUNS,GUNS_VT,
+  DEMOCRACY, BIDEN_ELECT,FAIR_MD, INSURRECTION) 
+
+
+listed_names<-c( "regvote","TRACK","MDECON_CUR","MDECON_FUT","PRICE","HOGAN_FAV","TRUMP_FAV","BIDEN_FAV","GOP_FAV",
+  "DEM_FAV","OBAMA_FAV", "ISSUE_CRM","ISSUE_SCH","ISSUE_INF","ISSUE_GAS","ISSUE_HWY","ISSUE_PUB",
+  "ISSUE_TAX","ISSUE_ECN","ISSUE_HOU","ISSUE_ENV", "ISSUE_CVD","ABORTION","ABORTION_VT","GUNS","GUNS_VT",
+  "DEMOCRACY", "BIDEN_ELECT","FAIR_MD", "INSURRECTION") %>% tolower
+
+names(D_for_diff$variables)<-listed_names
+
+#this is the helper function for calculating poll differences
+diffs<-calc_diffs(D_for_diff,"regvote")
+
+diffs%>%  group_by(var) %>% mutate(diff_r = coef[which(regvote==1)]-coef[which(regvote==2)])%>% 
+  filter(is.na(regvote)==FALSE) %>%
+  mutate(regvote = case_when(as.numeric(regvote)==1~"Democrats",as.numeric(regvote)==2~"Republicans"),
+         coef = coef*100) %>% ggplot(aes(x = reorder(var, -diff_r), fill = regvote, y = coef))+
+  geom_bar(position="dodge", stat="identity")+
+  geom_errorbar(aes(ymin= low, ymax = upp,x = var), position="dodge")+
+  scale_fill_manual(values=c("blue","red"), labels=c("Democrats","Republicans"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+```
+
+The second section presented in the story is a look into the distribution of opinions along party lines and concern for democracy about each party's "existential threat" story. For the Democrats, this is the January 6th insurrection and for the Republicans, this is the election of Joe Biden. While we don't go into truth claims in the article, we do link to a large body of academic work laying out to an _extreme_ degree of confidence the correctness of the 2020 election and the validity of Joe Biden's election. 
+
+Returning to the opinion polls, we can see how similar the Republican and Democratic opinion distributions are on the question of whether democracy threatened. They're shockingly similar.
+
+```{r}
+srs_design  %>% group_by(regvote,DEMOCRACY) %>% summarise(survey_prop("ci")) %>% 
+  ggplot(aes(x = DEMOCRACY, y = coef,fill = regvote))+geom_bar(position = "dodge", stat = "identity")+
+  geom_errorbar(aes(ymin = `_low`,ymax = `_upp`, x = DEMOCRACY), position = "dodge")
+
+srs_design  %>% group_by(regvote,DEMOCRACY) %>% summarise(survey_prop("ci")) %>% 
+  ggplot(aes(x = DEMOCRACY, y = coef,fill = regvote))+geom_bar(position = "dodge", stat = "identity")+
+  geom_errorbar(aes(ymin = `_low`,ymax = `_upp`, x = DEMOCRACY), position = "dodge")
+```
+
+Taking this a step further, we can examine how these opinions vary depending on a person's feelings about the security of American democracy.
+
+```{r}
+srs_design %>% 
+  group_by(interact(regvote, DEMOCRACY), BIDEN_ELECT) %>%
+  summarise(survey_prop("ci", level = .9)) %>% na.omit %>% 
+  filter(DEMOCRACY%in%threat_act, BIDEN_ELECT%in%won_act) %>% 
+  rename(opinion=BIDEN_ELECT) %>% 
+  ggplot(aes(x = opinion, y = coef,fill = DEMOCRACY))+
+  geom_bar(stat = "identity",position="dodge")+
+  geom_errorbar(position = "dodge",aes(x = opinion,ymin = `_low`, ymax = `_upp`))+
+  facet_grid(~regvote)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+srs_design %>% 
+  group_by(interact(regvote, DEMOCRACY), INSURRECTION) %>% 
+  summarise(survey_prop("ci"), level = .9) %>% na.omit %>% 
+  filter(DEMOCRACY%in%threat_act, INSURRECTION%in%insurr_act) %>% 
+  rename(opinion=INSURRECTION)%>% 
+  ggplot(aes(x = opinion, y = coef,fill = DEMOCRACY))+
+  geom_bar(stat = "identity",position="dodge")+
+  geom_errorbar(position = "dodge",aes(x = opinion,ymin = `_low`, ymax = `_upp`))+
+  facet_grid(~regvote)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+As stated in the article, there is a very interesting trend here where as a respondent's concern for democracy increases, their belief in their partisan existential explanation increases also. This trend is stronger among Republicans than among Democrats (because of more monolithic belief among Democrats on these questions), but it appears to be true of Democrats also. We mention that the width of the confidence intervals makes a definitive claim about Democrats insurrection and security beliefs not possible, but the suggestion by the data is sufficiently interesting it bears mentioning alongside its uncertainty. 
+
+The final section in the article deals with beliefs on abortion by gender and ideology. I won't repeat the writing there, but to point out a neat little function we're using to create tile plots in the context of a weighted survey. Because of survey weights, a tile chart that allocated one tile per respondent would be misleading. We use a function that replicates rows according to their weights and uses the replicated data as the basis for the tile plots. I don't know how to create the sort of tile plot I made in Flourish in R without a good deal of work, so below are the table sums that correspond to the tile chart.
+
+```{r}
+weight_survey_entry(srs_design, c("GENDER", "ABORTION", "ideo"))%>% 
+    filter(as.numeric(GENDER)%in%c(1,2), as.numeric(ABORTION)%in%c(1,2,3),
+           as.numeric(ideo)%in%c(1,2,3)) %>% group_by(GENDER, ABORTION, ideo) %>% summarise(n = n()) %>% arrange(desc(n))
+```
+
+Thanks for reading and see you next time. 
+
