@@ -1,0 +1,306 @@
+---
+title: "Evictions in MD"
+output: github_document
+date: "2022-08-29"
+---
+
+
+### Library and data
+
+There are two datasets that we use for this story. One is [high-level statistical count data](https://www.lsctracker.org/virginia/state-wide) aggregated by the Legal Services Corporation, a non-profit that provides legal aid to low-income Americans. The other is a dataset of actual administrative case records from Anne Arundel County that my colleague Ryan Little scraped from the [Maryland Case Search](https://casesearch.courts.state.md.us/casesearch/). A brief word on the choice of Anne Arundel County. There is very little standardization for the electronic data storage of administrative eviction records in Maryland. Many counties do things very differently, and many post next to none of their eviction case records online. Baltimore City, for example, makes none of its data available online or in any mass format. 
+
+Thanks to a long-standing court scraping project in Maryland [called Case Harvester](https://mdcaseexplorer.com/), however, we were able to see which counties posted a substantial number of their Failure to Pay Rent cases on the Maryland Case Search. Anne Arundel County posted by far the largest number of cases, so we directed our scraping efforts towards this county, and focused the story there also. 
+
+```{r setup, include=FALSE}
+library(formattable)
+library(data.table)
+library(DBI)
+library(RSQLite)
+library(readxl)
+library(tidyverse)
+library(lubridate)
+library(tidycensus)
+library(purrr)
+library(tools)
+library(sf)
+
+sheet_names<-excel_sheets("~/Desktop/banner_projects/evictions/eviction_data.xlsx")
+n = length(sheet_names)
+list_v <- vector(mode = "list", length = n)
+
+for(i in 1:n){
+  D<-read_excel("~/Desktop/banner_projects/evictions/eviction_data.xlsx", sheet=i)
+  start<-which(D[,1]=="District")
+  rm<-which(is.na(D[,1]))
+  D_1<-D[-rm,]
+  start<-which(D_1[,1]=="District")
+  
+  list_v[[i]]<-D_1[(start+1):nrow(D_1),] %>% add_column(date = sheet_names[i])
+  
+}
+
+D_evics<-do.call("rbind", list_v)
+
+names_lab<-c("district","county", "filed", "defendant_appeared", "dismissed","tenant_holding_over", "breach_of_lease","levy_in_distress","wrongful_detainer",
+         "grantor_in_possession","warrant_of_restitution","evictions","rent_escrows", "date")
+
+names(D_evics)<-names_lab
+
+D_evics_f<-D_evics %>% mutate(date = parse_date_time(date,orders = "by"), 
+                   district_num = str_split(district, "-") %>% lapply(.,function(x)return(x[[2]])) %>% unlist,
+                   district = str_split(district, "-") %>% lapply(.,function(x)return(x[[1]])) %>% unlist
+                   )
+
+D_evics_count <-D_evics_f %>% group_by(county, date) %>% summarise(filed = sum(as.numeric(filed)),
+                                                                   plaintiff_judge = sum(as.numeric(warrant_of_restitution)),
+                                                                   evics = sum(as.numeric(evictions))) %>%
+  add_column(state = "maryland") %>% select(state, county, date, evictions=evics, plaintiff_judge) %>% ungroup
+
+D_filing_state<-read_csv("~/Desktop/banner_projects/evictions/filing_counts_by_state.csv")%>% 
+  select(state, month=month_filed,count_filings)
+
+D_judge_state<-read_csv("~/Desktop/banner_projects/evictions/judgment_counts_by_state.csv")%>% 
+  pivot_wider(names_from = disposition,values_from = count_disposition)%>% mutate_if(.,is.double,function(x)return(replace_na(x, 0))) %>% 
+  mutate(dismissed = dismissal+`dismissed without prejudice`+`case dismissed`, evictions = `eviction complete`) %>%
+  select(state, month=month_filed, dismissed, evictions)
+
+D_filing_counts <-read_csv("~/Desktop/banner_projects/evictions/filing_counts_by_county.csv") %>% 
+  select(state, county, month=month_filed,count_filings) %>% mutate(month = mdy(month))
+
+D_judgement_counts <- read_csv("~/Desktop/banner_projects/evictions/judgment_counts_by_county.csv") %>% 
+  pivot_wider(names_from = disposition,values_from = count_disposition) %>% mutate_if(.,is.double,function(x)return(replace_na(x, 0))) %>% 
+  mutate(
+    
+    dismissed = dismissal+`judgment for defendant`+withdrawn+`dismissed without prejudice`+`case dismissed`+defendant+
+           `default judgment for defendant`, 
+    
+    evictions = `eviction complete`,
+    
+    plaintiff_judge = `judgment for plaintiff`+`default judgment for plaintiff`+`plaintiff`+`default judgment`+
+           `judgment admission`+`judgment argument`+`judgment by stipulation`,
+    
+    other_judge = `judgment admission` + `judgment by stipulation` + withdrawn + `default judgment` +`judgment non-suit`+
+      `judgment argument`+ settled + `judgment by agreement`) %>%
+  select(state, county, month=month_filed, dismissed, evictions,plaintiff_judge, other_judge)%>% mutate(month = mdy(month))
+
+D_other_tot <- D_judgement_counts %>% left_join(D_filing_counts, by = c("state","county" ,"month")) %>% 
+  select(state, county,month, filed=count_filings,dismissed, evictions,plaintiff_judge,other_judge)
+
+D_evics_f_2<-D_evics_f %>% mutate(state = "maryland", other_judge=0) %>% select(state,county, month = date, filed, dismissed, evictions, 
+                                                                 plaintiff_judge= warrant_of_restitution,other_judge
+                                                                 ) %>% 
+  mutate(month = ymd(month))
+
+D_f <- rbind(D_evics_f_2, D_other_tot) %>% mutate(state = toTitleCase(state), county = toTitleCase(county), year = year(month))%>% 
+  mutate(county = str_c(county, " County") %>% str_replace("City County", "City") %>% str_replace("County County", "County") )
+
+D_f[D_f$state=="Pennsylvania"&D_f$county=="McKean County",]$county<-"McKean County"
+
+map_tot<-map_df(2016:2020, function(x){
+  get_acs(state = c("PA","VA","DE","MD"), variables=c(population="B01001_001", renters="B25003_001"), geography = "county", year = x) %>% 
+    add_column(year = x)
+})%>% select(NAME, variable,estimate, year) %>% pivot_wider(names_from = variable, values_from = estimate) %>% 
+  mutate(state  = str_split(NAME, ",") %>% lapply(function(x)return(x[[2]])) %>% unlist %>% trimws,
+         county  = str_split(NAME, ",") %>% lapply(function(x)return(x[[1]])) %>% unlist %>% trimws,
+  ) %>% select(state, county, year, population, renters)
+
+D_2021<-map_tot %>% filter(year ==2020)
+D_2021$year<-2021
+
+D_2022<-map_tot %>% filter(year ==2020)
+D_2022$year<-2022
+
+D_f_county = rbind(map_tot, D_2021, D_2022) %>% mutate(county = toTitleCase(county))%>% 
+  mutate(county = county %>% str_replace("City County", "City") %>% str_replace("County County", "County") )
+
+#ignores MD: smissing snow hill county and ocean city from 2019-2022. they don't show up in the census
+D_f_j<-D_f %>% left_join(D_f_county, c("state","county","year")) %>% filter(is.na(population)==FALSE) %>% 
+  mutate(filed = as.numeric(filed),dismissed = as.numeric(dismissed), evictions = as.numeric(evictions), 
+         plaintiff_judge=as.numeric(plaintiff_judge)) %>% 
+  mutate( filing_rate_per_rent = filed/renters, 
+         p_judge_per_ren = plaintiff_judge/renters,
+         p_judge_per_fil = plaintiff_judge/filed,
+         rental_rate = renters/population,
+         perc_diss = dismissed/filed,
+         period = case_when(month<ymd("2020-03-01")~"pre_pand", between(month,ymd("2020-03-01"),ymd("2021-09-01"))~"moratorium",
+                            month>ymd("2021-09-01")~"post_moratorium")) %>% 
+  filter(year>2018&month<ymd("2022-06-01"), filed>0)
+
+D_state<-D_f_j %>% group_by(state, month, period) %>% 
+  summarise(filed = sum(filed), dismissed = sum(dismissed), evictions = sum(evictions),
+            plaintiff_judge= sum(plaintiff_judge),
+            other_judge = sum(other_judge),
+            year = year[1],population = sum(population), 
+            renters = sum(renters))%>% 
+  mutate( filing_rate_per_rent = filed/renters, 
+          p_judge_per_ren = plaintiff_judge/renters,
+          p_judge_per_fil = plaintiff_judge/filed,
+          rental_rate = renters/population,
+          perc_diss = dismissed/filed)%>% 
+  filter(year>2018&month<ymd("2022-06-01"), filed>0)
+
+## connect to db
+con <- dbConnect(drv=RSQLite::SQLite(), dbname="~/Desktop/banner_projects/evictions/dbl-init.sqlite")
+
+## list all tables
+tables <- dbListTables(con)
+
+## exclude sqlite_sequence (contains table information)
+tables <- tables[tables != "sqlite_sequence"]
+
+lDataFrames <- vector("list", length=length(tables))
+
+## create a data.frame for each table
+for (i in seq(along=tables)) {
+  lDataFrames[[i]] <- dbGetQuery(conn=con, statement=paste("SELECT * FROM '", tables[[i]], "'", sep=""))
+}
+
+lawyers <-lDataFrames[[1]]
+cases <- lDataFrames[[2]]
+documents <- lDataFrames[[3]]
+parties <- lDataFrames[[4]]
+
+
+cases_parties_j<-cases %>% left_join(parties, by="case_number")
+cases_parties_documents_j<-cases_parties_j %>% left_join(documents, by = "case_number") %>% data.table
+
+ftpr_cases <- cases_parties_documents_j[str_detect(case_type, "Failure")]
+
+by_case_docs<-ftpr_cases[order(mdy(file_date)),.(str_c(party_type, ":", document_name, collapse = ";;; ")), by = case_id]
+
+ftpr_cases[,has_warrant:=str_detect(document_name,"Warrant"), by = case_id]
+ftpr_cases[,has_warrant_cancelled:=str_detect(document_name,"Warrant of Restitution - Return of Service - Cancelled"), by = case_id]
+ftpr_cases[,has_warrant_expired:=str_detect(document_name,"Warrant of Restitution - Return of Service - Expired"), by = case_id]
+ftpr_cases[,has_warrant_evicted:=str_detect(document_name,"Warrant of Restitution - Return of Service - Evicted"), by = case_id]
+ftpr_cases[,has_dismiss:=str_detect(document_name,"Dismissal"), by = case_id]
+ftpr_cases[,has_disposition:=str_detect(document_name,"Disposition"), by = case_id]
+ftpr_cases[,has_complaint:=str_detect(document_name,"Complaint"), by = case_id]
+```
+
+
+### Story points
+
+Average filing rate in Maryland and its neighbors:
+```{r}
+D_state %>% group_by(state, year) %>% summarise(tot=sum(filed), num_mon = month %>% unique %>% length) %>% 
+  mutate(tot_per_mo = tot/num_mon) %>% arrange(desc(tot_per_mo)) %>% filter(year==2022)
+```
+
+```{r}
+D_state %>% group_by(state, year) %>% summarise(tot=sum(filed))%>% filter(state=="Maryland", year ==2019)
+```
+
+We re-format the Anne Arundel data to be able to look at flows. this grouped_ftpr object is what get sent out to create the flow chart in the story.
+
+```{r}
+ftpr_cases[,any(has_complaint), case_id]$V1 %>% table
+to_rm<-ftpr_cases[,any(has_complaint), case_id][V1==FALSE]$case_id
+
+ftpr_cases_1 <- ftpr_cases[case_id%in%to_rm==FALSE]#[case_id%in%to_rm_date_f]
+
+grouped_ftpr=ftpr_cases_1[,
+                          .(
+                            has_disposition= any(has_disposition), 
+                            has_warrant = any(has_warrant), 
+                            has_dismiss = any(has_dismiss),
+                            has_warrant_expired = any(has_warrant_expired),
+                            has_warrant_cancelled = any(has_warrant_cancelled),
+                            has_warrant_evicted = any(has_warrant_evicted)
+                          )
+                          ,
+                          by = .(case_id)
+                          ]
+
+grouped_val<-grouped_ftpr[,.N, .(has_disposition, has_dismiss, has_warrant,has_warrant_expired,has_warrant_cancelled,has_warrant_evicted)] 
+
+flow_tibble<-tibble(source = "Case filed", 
+       destination = "Disposition filed", 
+       value = grouped_val[has_disposition==TRUE]$N %>% sum,
+       step_from =0,
+       step_to=1) %>% 
+  add_row(
+       tibble(
+         source = "Case filed", 
+         destination = "Dismissed", 
+         value = grouped_val[has_dismiss==TRUE &has_disposition==FALSE&has_warrant==FALSE]$N,
+         step_from=0,
+         step_to=1)
+       ) %>% 
+  add_row(
+    tibble(
+      source = "Case filed", 
+      destination = "Attrition", 
+      value = grouped_val[has_dismiss==FALSE &has_disposition==FALSE&has_warrant==FALSE]$N,
+      step_from =0,
+      step_to=1)
+  ) %>% 
+  add_row(
+    tibble(
+      source = "Disposition filed", 
+      destination = "Warrant filed", 
+      value = grouped_val[has_disposition==TRUE&has_warrant==TRUE]$N %>% sum,
+      step_from =1,
+      step_to=2)
+  )%>% 
+  add_row(
+    tibble(
+      source = "Disposition filed", 
+      destination = "Attrition or pending", 
+      value = grouped_val[has_disposition==TRUE&has_warrant==FALSE]$N %>% sum,
+      step_from =1,
+      step_to=2)
+  )%>% 
+  add_row(
+    tibble(
+      source = "Warrant filed", 
+      destination = "Warrant cancelled", 
+      value = grouped_val[has_disposition==TRUE&has_warrant==TRUE&has_warrant_cancelled==TRUE]$N %>% sum,
+      step_from =2,
+      step_to=3)
+  )%>% 
+  add_row(
+    tibble(
+      source = "Warrant filed", 
+      destination = "Tenant evicted", 
+      value = grouped_val[has_disposition==TRUE&has_warrant==TRUE&has_warrant_evicted==TRUE]$N %>% sum,
+      step_from =2,
+      step_to=3)
+  )%>% 
+  add_row(
+    tibble(
+      source = "Warrant filed", 
+      destination = "Warrant expired", 
+      value = grouped_val[has_disposition==TRUE&has_warrant==TRUE&has_warrant_expired==TRUE]$N %>% sum,
+      step_from =2,
+      step_to=3)
+  ) %>% 
+  mutate(value = comma(value))
+
+dismissed = flow_tibble %>% filter(source=="Case filed", destination=="Dismissed") %>% pull(value) %>% str_remove(",") %>% as.numeric
+
+warrant_filed = flow_tibble %>% filter(source=="Disposition filed", destination=="Warrant filed") %>% pull(value) %>% str_remove(",") %>% as.numeric
+
+evicted = flow_tibble %>% filter(source=="Warrant filed", destination=="Tenant evicted") %>% pull(value) %>% str_remove(",") %>% as.numeric
+
+#almost 20%
+dismissed/nrow(grouped_ftpr)
+
+#under 40%
+warrant_filed/nrow(grouped_ftpr)
+
+#3.29%
+evicted/nrow(grouped_ftpr)
+
+```
+
+We also look at how the pandemic affected eviction filing rates. A 96% drop during the beginning of the pandemic, followed by a rapid rebound. 
+
+```{r}
+D_state %>% filter(between(month, ymd("2020-02-01"), ymd("2020-06-01")), state=="Maryland") %>% group_by(.) %>% 
+  summarise(max_n=max(filed), min_n = min(filed)) %>% mutate(1-min_n/max_n)
+
+D_state %>% filter(month==ymd("2020-10-01"), state=="Maryland") %>% pull(filed)
+
+D_state %>% filter(month>=ymd("2020-10-01"), period == "moratorium", state == "Maryland") %>% pull(evictions) %>% median
+```
+
