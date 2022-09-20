@@ -29,21 +29,32 @@ I touch on this in the post a bit, but this poll analysis is really a companion 
 
 We start by looking at the views Marylanders hold about abortions, and whether they've been differentially motivated by Dobbs v. Jackson ruling. We find that they have been, inways that I go into in the piece. Below is the data we write out for the Flourish map, as well as the single statistics that we call on.
 
-```{r cars}
+```{r}
 srs_design_lv %>% filter(ideo%in%c(1,2,3) ,sc_motivate%in%c(2,3), gender%in%c(1,2)) %>% group_by(interact(gender,ideo),sc_motivate) %>%
   summarise(survey_prop("ci", .9)) %>% 
   mutate(sc_motivate = as_factor(sc_motivate),ideo = as_factor(ideo), gender = as_factor(gender)) %>% 
   ggplot(aes(x = ideo, fill = sc_motivate, y = coef))+geom_bar(stat="identity", position = "dodge")+
   geom_errorbar(aes(ymin= `_low`, ymax = `_upp`,x = ideo), position="dodge")+facet_grid(~gender)
 
+```
+
+```{r}
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Progressive", gender =="Female", sc_motivate=="More motivated")
+```
 
+```{r}
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Conservative", gender =="Female", sc_motivate%in%c("Made no difference", "Less motivated")) %>% pull(coef) %>% as.character %>% as.numeric %>% sum
+```
 
+```{r}
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Conservative", gender =="Male", sc_motivate%in%c("Made no difference", "Less motivated")) %>% pull(coef) %>% as.character %>% as.numeric %>% sum
+```
 
+```{r}
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Moderate", gender =="Male", sc_motivate=="More motivated") 
+```
 
+```{r}
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Moderate", gender =="Female", sc_motivate=="More motivated") 
 ```
 
@@ -56,7 +67,9 @@ Below, I show the simple hypothesis test we perform in the article to test for t
 ```{r}
 srs_design %>%filter(race%in%c(1,2)) %>%  group_by(race,race_rel_2) %>% summarise(survey_prop()) %>% mutate_all(as_factor) %>% 
   filter(race_rel_2=="Good")
+```
 
+```{r}
 srv_count_by_race_for_test<-srs_design %>%filter(race%in%c(1,2)) %>%  group_by(race,race_rel_2) %>% summarise(survey_count(.))
 
 n_white_good<-srv_count_by_race_for_test %>% mutate(race = as_factor(race), race_rel_2 = as_factor(race_rel_2)) %>% filter(race=="White", race_rel_2=="Good") %>% unique() %>% pull(n)
@@ -68,17 +81,25 @@ n_tot_black <- srs_design %>% group_by(race) %>% summarise(survey_count(.)) %>% 
 n_tot_white <- srs_design %>% group_by(race) %>% summarise(survey_count(.)) %>% mutate(race = as_factor(race)) %>% filter(race=="White") %>% pull(n) %>% unique
 
 test<-prop.test(c(n_white_good, n_black_good), c(n_tot_white,n_tot_black)) # the difference is significant but small
-
+test
+```
+```{r}
 srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop()) %>%
   mutate(ideo = as_factor(ideo), race_rel_2 = as_factor(race_rel_2)) %>% filter(ideo=="Conservative",race_rel_2 =="Good")
+```
 
+```{r}
 srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop()) %>%
   mutate(ideo = as_factor(ideo), race_rel_2 = as_factor(race_rel_2)) %>% filter(ideo=="Conservative",race_rel_2 =="Bad")
+```
 
+```{r}
 srs_design %>%mutate(region_code=as_factor(region_code)) %>% filter(race%in%c(1,2), region_code=="Baltimore County") %>%  group_by(interact(race,region_code),race_rel_2) %>% summarise(survey_prop()) %>% mutate(race = as_factor(race), race_rel_2 = as_factor(race_rel_2)) %>%  filter(race=="Black", race_rel_2=="Good")
-
+```
+```{r}
 srs_design %>%mutate(region_code=as_factor(region_code)) %>% filter(race%in%c(1,2), region_code=="Baltimore County") %>%  group_by(interact(race,region_code),race_rel_2) %>% summarise(survey_prop()) %>% mutate(race = as_factor(race), race_rel_2 = as_factor(race_rel_2)) %>%  filter(race=="White", race_rel_2=="Good")
-
+```
+```{r}
 tot_black<-srs_design %>% mutate(race = as_factor(race)) %>% filter(race=="Black") %>% pull(weight) %>% sum
 
 black_conservatives<-srs_design %>% mutate(race = as_factor(race), ideo = as_factor(ideo)) %>% filter(race=="Black", ideo=="Conservative") %>% pull(weight) %>% sum

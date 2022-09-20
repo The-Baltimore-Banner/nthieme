@@ -32,7 +32,7 @@ srs_design_lv %>% filter(ideo%in%c(1,2,3) ,sc_motivate%in%c(2,3), gender%in%c(1,
   geom_errorbar(aes(ymin= `_low`, ymax = `_upp`,x = ideo), position="dodge")+facet_grid(~gender)
 ```
 
-![](github_doc_general_poll_files/figure-gfm/cars-1.png)<!-- -->
+![](github_doc_general_poll_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
 
 ``` r
 srs_design_lv  %>% group_by(ideo, gender, sc_motivate) %>% summarise(survey_prop()) %>% ungroup%>%mutate_all(as_factor) %>% filter(ideo == "Progressive", gender =="Female", sc_motivate=="More motivated")
@@ -115,7 +115,22 @@ n_tot_black <- srs_design %>% group_by(race) %>% summarise(survey_count(.)) %>% 
 n_tot_white <- srs_design %>% group_by(race) %>% summarise(survey_count(.)) %>% mutate(race = as_factor(race)) %>% filter(race=="White") %>% pull(n) %>% unique
 
 test<-prop.test(c(n_white_good, n_black_good), c(n_tot_white,n_tot_black)) # the difference is significant but small
+test
+```
 
+    ## 
+    ##  2-sample test for equality of proportions with continuity correction
+    ## 
+    ## data:  c(n_white_good, n_black_good) out of c(n_tot_white, n_tot_black)
+    ## X-squared = 3.9191, df = 1, p-value = 0.04774
+    ## alternative hypothesis: two.sided
+    ## 95 percent confidence interval:
+    ##  -0.138573243 -0.001533094
+    ## sample estimates:
+    ##    prop 1    prop 2 
+    ## 0.5820358 0.6520890
+
+``` r
 srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop()) %>%
   mutate(ideo = as_factor(ideo), race_rel_2 = as_factor(race_rel_2)) %>% filter(ideo=="Conservative",race_rel_2 =="Good")
 ```
@@ -298,7 +313,7 @@ D_iso<-isomap(dists_lv, k =8)
 plot(D_iso$points[,c(1,2)], col =d_for_dists$regvote, pch = 16, cex = .6)
 ```
 
-![](github_doc_general_poll_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](github_doc_general_poll_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 ``` r
 srs_design_lv %>% group_by(interact(housing, environment, pubtransit, infra, pubsch, econtax, pubsafety)) %>% 
