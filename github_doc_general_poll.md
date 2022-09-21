@@ -143,6 +143,15 @@ srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_
     ## 2 2 [Black] Conservative Good       0.785 0.0547
 
 ``` r
+srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop("ci",.9))  %>%
+  mutate(race = as_factor(race), race_rel = as_factor(race_rel_2), ideo = as_factor(ideo)) %>% select(-race_rel_2) %>% ungroup %>% 
+  select(-`_low`,-`_upp`) %>% 
+  pivot_wider(names_from = race, values_from = coef) %>% filter(race_rel=="Good") %>% 
+  mutate(White = White*100, Black =Black*100) %>% 
+  write_csv("~/Desktop/banner_projects/banner_poll_stories/banner_general_poll/race_rel_by_ideo.csv")
+```
+
+``` r
 srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop()) %>%
   mutate(ideo = as_factor(ideo), race_rel_2 = as_factor(race_rel_2)) %>% filter(ideo=="Conservative",race_rel_2 =="Bad")
 ```
@@ -155,6 +164,18 @@ srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_
     ## 2 2 [Black] Conservative Bad        0.153 0.0457
 
 ``` r
+srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,ideo),race_rel_2) %>% summarise(survey_prop()) %>%
+  mutate(ideo = as_factor(ideo), race_rel_2 = as_factor(race_rel_2), race = as_factor(race)) %>% filter(ideo=="Conservative",race_rel_2 =="Good")
+```
+
+    ## # A tibble: 2 × 5
+    ## # Groups:   race, ideo [2]
+    ##   race  ideo         race_rel_2  coef  `_se`
+    ##   <fct> <fct>        <fct>      <dbl>  <dbl>
+    ## 1 White Conservative Good       0.577 0.0415
+    ## 2 Black Conservative Good       0.785 0.0547
+
+``` r
 srs_design %>%mutate(region_code=as_factor(region_code)) %>% filter(race%in%c(1,2), region_code=="Baltimore County") %>%  group_by(interact(race,region_code),race_rel_2) %>% summarise(survey_prop()) %>% mutate(race = as_factor(race), race_rel_2 = as_factor(race_rel_2)) %>%  filter(race=="Black", race_rel_2=="Good")
 ```
 
@@ -163,6 +184,14 @@ srs_design %>%mutate(region_code=as_factor(region_code)) %>% filter(race%in%c(1,
     ##   race  region_code      race_rel_2  coef  `_se`
     ##   <fct> <fct>            <fct>      <dbl>  <dbl>
     ## 1 Black Baltimore County Good       0.676 0.0856
+
+``` r
+srs_design %>%filter(race%in%c(1,2)) %>%  group_by(interact(race,region_code),race_rel_2) %>% summarise(survey_prop("ci",.9))  %>%
+  mutate(race = as_factor(race), race_rel = as_factor(race_rel_2), region_code = as_factor(region_code)) %>%
+  select(-race_rel_2, -`_low`, -`_upp`) %>%pivot_wider(names_from= race, values_from = coef) %>% filter(race_rel=="Good") %>% 
+  mutate(White = White*100, Black =Black*100) %>% 
+  write_csv("~/Desktop/banner_projects/banner_poll_stories/banner_general_poll/race_rel.csv")
+```
 
 ``` r
 srs_design %>%mutate(region_code=as_factor(region_code)) %>% filter(race%in%c(1,2), region_code=="Baltimore County") %>%  group_by(interact(race,region_code),race_rel_2) %>% summarise(survey_prop()) %>% mutate(race = as_factor(race), race_rel_2 = as_factor(race_rel_2)) %>%  filter(race=="White", race_rel_2=="Good")
@@ -313,7 +342,7 @@ D_iso<-isomap(dists_lv, k =8)
 plot(D_iso$points[,c(1,2)], col =d_for_dists$regvote, pch = 16, cex = .6)
 ```
 
-![](github_doc_general_poll_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+![](github_doc_general_poll_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ``` r
 srs_design_lv %>% group_by(interact(housing, environment, pubtransit, infra, pubsch, econtax, pubsafety)) %>% 
