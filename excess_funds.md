@@ -7,16 +7,163 @@ Nick Thieme
 
 This is the code that goes with the story
 `Tax sale foreclosure costs Baltimore residents their homes and equity. The city does nothing to help them get the small amount they’re owed`
-located [here](link). In this story, Sophie Kasakove and I take a look
-at the excess funds list–the amount of money the City of Baltimore owes
-to property owners who have lost their homes through tax sale
-foreclosure.
+located
+[here](https://www.thebaltimorebanner.com/community/housing/baltimore-city-tax-sale-foreclosure-funds-TWQXWYNBNJGABKYCDMCFCZ7WCM/).
+In this story, Sophie Kasakove and I take a look at the excess funds
+list–the amount of money the City of Baltimore owes to property owners
+who have lost their homes through tax sale foreclosure.
 
 ### Parsing the data
 
 The statistics in this story are very simple. The only slight difficulty
-is turning the excess funds pdf into a csv. We do that in thie code
+is turning the excess funds pdf into a csv. We do that in this code
 chunk here.
+
+``` r
+# D<-pdf_text("~/Downloads/RP26806D_120122103239.pdf")
+# 
+# D_2<-D[3:(length(D)-8)] %>% lapply(
+#   function(x){
+#     x_new<-x %>% str_split("\\n") %>% lapply(., trimws)
+#     return(x_new[[1]])
+#   }
+# )
+# 
+# D_2_index<-D_2%>% lapply(
+#   function(x){
+#     index <- str_detect(str_sub(x, 1,3), "[0-9]{2} ") %>% which
+#     return(index)
+#   }
+# )
+# 
+# D_excess_funds<-tibble()
+# 
+# for(i in 1:length(D_2)){
+# 
+#   index <- D_2_index[[i]]
+# 
+#   if(length(index)<2){
+#     next
+#     print("lenght less than 2")
+#   }
+# 
+#   for(j in 1:(length(index)-1)){
+#     curr_entries<-D_2[[i]][index[j]:(index[j+1]-1)]
+#     empties<-which(curr_entries=="")
+#     curr_entries_new <- curr_entries[-empties]
+# 
+#     possible_unclaimed_amounts<-(curr_entries_new %>% str_split("   ") )[[1]]%>% str_remove(",") %>% trimws
+#     period_locations<- possible_unclaimed_amounts %>% str_detect("\\.")
+#     unclaimed_amount<-possible_unclaimed_amounts[period_locations]%>% as.numeric %>% na.omit
+# 
+#     possible_lien_amounts <- (curr_entries_new %>% str_split("   "))[[2]]%>% str_remove(",") %>% trimws
+# 
+#     if(length(possible_lien_amounts)==1){
+#       total_lien <- possible_lien_amounts
+#     }else{
+#       empty_to_rm<-which(possible_lien_amounts=="")
+#       total_lien_candidates<-possible_lien_amounts[-empty_to_rm]
+#       period_locations<-which(total_lien_candidates %>% str_detect("\\."))
+#       total_lien <- total_lien_candidates[period_locations]
+#     }
+# 
+#     options_new<- curr_entries_new[1] %>% str_remove(unclaimed_amount %>% as.character) %>% str_sub(.,15, nchar(.))
+# 
+#     addr<-options_new %>% trimws %>% str_split("  ") %>%   lapply(function(x)return(x[[1]])) %>% unlist %>% str_remove_all("\\*")
+# 
+#     name<- options_new %>% str_remove(addr) %>% trimws %>%str_split("      ") %>%  lapply(function(x)return(x[[1]])) %>% unlist %>% str_remove_all("\\**") %>%
+#       str_remove("\\(") %>% str_remove("\\)")
+# 
+#     if(nchar(name)>0){
+#       dates<-options_new %>% str_remove(addr) %>% str_remove(name) %>% trimws %>% str_split("  ")
+#     }else{
+#       break
+#       print("name issue")
+#     }
+# 
+#     tax_sale_date<-dates[[1]][1] %>% trimws
+#     deed_delivered_date <- dates[[1]][3] %>% trimws
+# 
+#     D_row = tibble(property_address = addr, owner_name = name, tax_sale_date, deed_delivered_date, unclaimed_amount, total_lien)
+#     D_excess_funds <- rbind(D_excess_funds, D_row)
+# 
+#   }
+# 
+#   nchars_tot <- nchar(D_2[[i]]) %>% sum
+# 
+#   if(nchars_tot<20){
+#     print("not enough letters")
+#     break
+#   }
+# 
+#   curr_entries<-D_2[[i]][index[length(index)]:length(D_2[[i]])]
+#   empties<-which(curr_entries=="")
+#   curr_entries_new <- curr_entries[-empties]
+# 
+#   possible_unclaimed_amounts<-(curr_entries_new %>% str_split("   ") )[[1]]%>% str_remove(",") %>% trimws
+#   period_locations<- possible_unclaimed_amounts %>% str_detect("\\.")
+#   unclaimed_amount<-possible_unclaimed_amounts[period_locations]%>% as.numeric %>% na.omit
+# 
+#   inds<-(curr_entries_new %>% str_split("   "))
+# 
+#   if(length(inds)==1){
+#     options_new<- curr_entries_new[1] %>% str_remove(unclaimed_amount %>% as.character) %>% str_sub(.,15, nchar(.))
+# 
+#     addr<-options_new %>% trimws %>% str_split("   ") %>%   lapply(function(x)return(x[[1]])) %>% unlist %>% str_remove("\\(") %>% str_remove("\\)") %>%
+#       str_remove_all("\\*")
+# 
+#     name<- options_new %>% str_remove(addr) %>% trimws %>%str_split("      ") %>%  lapply(function(x)return(x[[1]])) %>% unlist%>% str_remove("\\(") %>%
+#       str_remove("\\)")%>%
+#       str_remove_all("\\*")
+# 
+#     dates<-options_new %>% str_remove(addr) %>% str_remove(name) %>% trimws %>% str_split("  ")
+#     tax_sale_date<-dates[[1]][1] %>% trimws
+#     deed_delivered_date <- dates[[1]][3] %>% trimws
+# 
+#     D_row = tibble(property_address = addr, owner_name = name, tax_sale_date, deed_delivered_date, unclaimed_amount, total_lien=NA)
+#     D_excess_funds <- rbind(D_excess_funds, D_row)
+# 
+#     next
+#   }
+# 
+#   possible_lien_amounts <- (curr_entries_new %>% str_split("   "))[[2]]%>% str_remove(",") %>% trimws
+# 
+#   if(length(possible_lien_amounts)==1){
+#     total_lien <- possible_lien_amounts
+#   }else{
+#     empty_to_rm<-which(possible_lien_amounts=="")
+#     total_lien_candidates<-possible_lien_amounts[-empty_to_rm]
+#     period_locations<-which(total_lien_candidates %>% str_detect("\\."))
+#     total_lien <- total_lien_candidates[period_locations]
+#   }
+# 
+#   options_new<- curr_entries_new[1] %>% str_remove(unclaimed_amount %>% as.character) %>% str_sub(.,15, nchar(.))
+# 
+#   addr<-options_new %>% trimws %>% str_split("      ") %>%   lapply(function(x)return(x[[1]])) %>% unlist%>% str_remove("\\(") %>% str_remove("\\)")%>%
+#     str_remove("\\*")
+# 
+#   name<- options_new %>% str_remove(addr) %>% trimws %>%str_split("      ") %>%  lapply(function(x)return(x[[1]])) %>% unlist%>% str_remove("\\(") %>%
+#     str_remove("\\)")
+# 
+#   dates<-options_new %>% str_remove(addr) %>% str_remove(name) %>% trimws %>% str_split("  ")
+#   tax_sale_date<-dates[[1]][1] %>% trimws
+#   deed_delivered_date <- dates[[1]][3] %>% trimws
+# 
+#   D_row = tibble(property_address = addr, owner_name = name, tax_sale_date, deed_delivered_date, unclaimed_amount, total_lien)
+#   D_excess_funds <- rbind(D_excess_funds, D_row)
+# 
+# }
+# 
+# D_excess_funds_f<-D_excess_funds %>%
+#   mutate(tax_sale_date = mdy(tax_sale_date), deed_delivered_date = mdy(deed_delivered_date), total_lien = as.numeric(total_lien)) %>%
+#   na.omit
+# 
+# D_excess_funds_f %>%
+#   mutate(
+#     property_address = str_c(str_remove_all(property_address, ", Baltimore, Maryland")%>% str_remove(., "^0+"), ", Baltimore, Maryland")
+#     )%>% 
+#   write_csv("~/Desktop/banner_projects/real_estate/excess_funds_list_3.csv")
+```
 
 Unsurprisingly, the majority of the funds owed by the City are located
 in the Black Butterly. This makes sense because excess funds are
@@ -39,7 +186,7 @@ Bmore_acs<-get_acs(geography = "tract", state = "MD",county = "Baltimore city",
 
     ## Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.
 
-    ##   |                                                                              |                                                                      |   0%  |                                                                              |=                                                                     |   1%  |                                                                              |=                                                                     |   2%  |                                                                              |==                                                                    |   2%  |                                                                              |==                                                                    |   3%  |                                                                              |===                                                                   |   4%  |                                                                              |====                                                                  |   5%  |                                                                              |====                                                                  |   6%  |                                                                              |=====                                                                 |   7%  |                                                                              |=====                                                                 |   8%  |                                                                              |======                                                                |   9%  |                                                                              |=======                                                               |  10%  |                                                                              |========                                                              |  11%  |                                                                              |=========                                                             |  13%  |                                                                              |==========                                                            |  14%  |                                                                              |===========                                                           |  16%  |                                                                              |============                                                          |  17%  |                                                                              |=============                                                         |  19%  |                                                                              |===============                                                       |  21%  |                                                                              |=================                                                     |  24%  |                                                                              |==================                                                    |  25%  |                                                                              |====================                                                  |  29%  |                                                                              |======================                                                |  31%  |                                                                              |========================                                              |  34%  |                                                                              |=========================                                             |  36%  |                                                                              |===========================                                           |  38%  |                                                                              |=============================                                         |  42%  |                                                                              |=================================                                     |  47%  |                                                                              |===================================                                   |  51%  |                                                                              |=====================================                                 |  53%  |                                                                              |=======================================                               |  56%  |                                                                              |==========================================                            |  60%  |                                                                              |============================================                          |  62%  |                                                                              |==============================================                        |  65%  |                                                                              |====================================================                  |  75%  |                                                                              |======================================================                |  77%  |                                                                              |=========================================================             |  81%  |                                                                              |===========================================================           |  84%  |                                                                              |=============================================================         |  87%  |                                                                              |===============================================================       |  90%  |                                                                              |================================================================      |  91%  |                                                                              |===================================================================== |  98%  |                                                                              |======================================================================| 100%
+    ##   |                                                                              |                                                                      |   0%  |                                                                              |=                                                                     |   1%  |                                                                              |=                                                                     |   2%  |                                                                              |==                                                                    |   2%  |                                                                              |===                                                                   |   4%  |                                                                              |===                                                                   |   5%  |                                                                              |====                                                                  |   5%  |                                                                              |====                                                                  |   6%  |                                                                              |=====                                                                 |   7%  |                                                                              |======                                                                |   8%  |                                                                              |======                                                                |   9%  |                                                                              |=======                                                               |  10%  |                                                                              |=======                                                               |  11%  |                                                                              |========                                                              |  11%  |                                                                              |========                                                              |  12%  |                                                                              |=========                                                             |  13%  |                                                                              |==========                                                            |  15%  |                                                                              |===========                                                           |  16%  |                                                                              |============                                                          |  17%  |                                                                              |============                                                          |  18%  |                                                                              |=============                                                         |  19%  |                                                                              |===============                                                       |  21%  |                                                                              |===============                                                       |  22%  |                                                                              |================                                                      |  22%  |                                                                              |=================                                                     |  24%  |                                                                              |=================                                                     |  25%  |                                                                              |==================                                                    |  25%  |                                                                              |====================                                                  |  28%  |                                                                              |====================                                                  |  29%  |                                                                              |=====================                                                 |  29%  |                                                                              |=======================                                               |  33%  |                                                                              |=========================                                             |  36%  |                                                                              |===========================                                           |  39%  |                                                                              |=============================                                         |  41%  |                                                                              |===============================                                       |  45%  |                                                                              |===================================                                   |  51%  |                                                                              |========================================                              |  57%  |                                                                              |=========================================                             |  59%  |                                                                              |==========================================                            |  60%  |                                                                              |===========================================                           |  61%  |                                                                              |===============================================                       |  68%  |                                                                              |=================================================                     |  70%  |                                                                              |=====================================================                 |  75%  |                                                                              |======================================================                |  77%  |                                                                              |=========================================================             |  82%  |                                                                              |==============================================================        |  89%  |                                                                              |===================================================================   |  95%  |                                                                              |===================================================================== |  99%  |                                                                              |======================================================================| 100%
 
 ``` r
 D_excess_funds_geocoded <- read_csv("~/Desktop/banner_projects/real_estate/excess_funds_list_2_geocodio_1701cf4c732b384328a711a38efa2ea91c4829a0.csv") %>% 
@@ -166,3 +313,104 @@ D_excess_funds_geocoded %>% nrow
 ```
 
     ## [1] 2132
+
+``` r
+D_excess_funds_geocoded %>% filter(str_detect(owner_name, " LL")) %>% pull(unclaimed_amount) %>% sum
+```
+
+    ## [1] 796198.1
+
+``` r
+D_excess_funds_geocoded %>% filter(str_detect(owner_name, " LL")==FALSE) %>% pull(unclaimed_amount) %>% sum
+```
+
+    ## [1] 5239482
+
+``` r
+D_excess_paid <- read_csv("~/Desktop/banner_projects/real_estate/ExcessFundsPaid.csv") %>% 
+  mutate(total_e = `TOTAL-LIENS` %>% str_remove("\\$") %>% str_remove(",") %>% as.numeric,
+         balance_e = BALANCE %>% str_remove("\\$") %>% str_remove(",") %>% as.numeric,
+         amt_bid_e = `AMT-BID` %>% str_remove("\\$") %>% str_remove(",") %>% as.numeric,
+         dd_date_e = `DD-DATE` %>% mdy,
+         address = `PROPERTY-ADDRESS`,
+         sale_date_e = `SALE-DATE`,
+         dd_y = year(dd_date_e))
+```
+
+    ## Rows: 180 Columns: 17
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (12): BLOCK, LOT, SALE-DATE, SALE-TYPE, LOT-SIZE, PROPERTY-ADDRESS, OWNE...
+    ## dbl  (5): YEAR, TAXBASE, PROP-ZIP-CODE, CERT-NUM, OVER-PAY-NO
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
+D_excess_paid_pm<-D_excess_paid %>% pm_identify(var = "address")
+
+D_excess_paid_pm_2<-D_excess_paid_pm%>% pm_prep(var = "address", type = "street") %>% 
+  mutate(pm.address=pm.address %>% str_remove_all("\\.")) 
+
+dirsDict <- pm_dictionary(type = "directional", locale = "us")
+
+D_excess_paid_pm_2_unit_2<-D_excess_paid_pm_2 %>% 
+  pm_house_parse() %>% pm_unit_parse() %>% select(pm.uid, pm.unit) %>% 
+  mutate(pm.unit = str_c("unit ", pm.unit))
+
+D_excess_paid_pm_2_add_f<-D_excess_paid_pm_2 %>% 
+  pm_house_parse() %>% 
+  pm_unit_parse() %>% 
+  pm_streetDir_parse(dictionary = dirsDict) %>%
+  pm_streetSuf_parse()%>%
+  filter(is.na(pm.house)==FALSE,is.na(pm.address)==FALSE) %>% 
+  mutate(pm.address = pm.address %>% str_split("#") %>% 
+           lapply(.,
+                  function(x){
+                    return(x[1])
+                  }
+                    ) %>% unlist %>% trimws %>% str_remove("\\.")
+         )
+
+D_excess_paid_pm_match_3<-D_excess_paid_pm_2_add_f %>% left_join(D_excess_paid_pm_2_unit_2)%>%
+  mutate(pm.house = pm.house %>% str_remove(., "^0+") %>% str_remove(., ">"),
+         pm.house=str_split(pm.house,"-") %>% lapply(function(x)return(x[1])) %>% unlist,
+         pm.preDir=replace_na(pm.preDir,""),
+         pm.streetSuf=replace_na(pm.streetSuf,""),
+         pm.unit=replace_na(pm.unit,""),
+         pm.addr.full = str_c(pm.house, " ",pm.preDir, " ",pm.address," ", pm.streetSuf, " ", pm.unit) %>% trimws %>% 
+           str_replace("  "," ") %>% str_replace("  "," ") %>% tolower) %>% select(pm.uid,pm.addr.full)%>%
+  mutate(pm.addr.full = str_remove(pm.addr.full, "\\#+[0-9]*") %>% trimws %>% str_remove_all("\\.")) %>% 
+  rename(pm.addr.full.bidder = pm.addr.full)
+```
+
+    ## Joining, by = "pm.uid"
+
+``` r
+D_excess_paid_pm_f<-D_excess_paid_pm %>% left_join(D_excess_paid_pm_match_3, by = "pm.uid") %>% 
+  select(-pm.id,-pm.uid, -pm.type) %>% as.data.frame 
+
+# join_paid_with_liens<-D_excess_paid_pm_f %>% mutate(sale_date_e = mdy(sale_date_e)) %>% 
+#   left_join(liened_properties_f %>% mutate(sale_date_2=sale_date), by = c("pm.addr.full.bidder"="pm.addr.full.sdat", "sale_date_e"="sale_date"))
+# 
+# jj<-join_paid_with_liens %>%mutate(balance = amt_bid-total_liens) %>% 
+#   select(paid_addr = pm.addr.full.bidder,lien_addr= property_address, sale_date_e = sale_date_e, 
+#          sale_date_2, total_e, total_liens, balance_e, balance,amt_bid_e, amt_bid, dd_date_e)
+
+
+D_excess_paid %>% group_by(dd_y) %>% summarise(amt = sum(balance_e), n = n())
+```
+
+    ## # A tibble: 4 × 3
+    ##    dd_y      amt     n
+    ##   <dbl>    <dbl> <int>
+    ## 1  2020 1038330.    86
+    ## 2  2021  894026.    42
+    ## 3  2022  654373.    50
+    ## 4  2023   12591.     2
+
+``` r
+D_excess_funds_geocoded %>% pull(unclaimed_amount) %>% sum
+```
+
+    ## [1] 6035680
